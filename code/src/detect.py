@@ -1,19 +1,30 @@
 
+import re
 import os
+import sys
 import cv2
 import json
-import pathlib
+import time
 from google import genai
+from pathlib import Path
 from google.genai import types
 from dotenv import load_dotenv
+from multiprocessing import Pool
+
+
+CODEBASE_DIR = Path(__file__).resolve().parent.parent
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from src.data_loader import load_image_paths
 
 load_dotenv() 
 
 
-def detect_single_image(path_to_image : str):
+def detect_single_image(path_to_image : str, classes: list):
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-    std_detection_prompt = "Detect all of the items in the image. There can be multiple objects. The box_2d should be [ymin, xmin, ymax, xmax] normalized to 0-1000."
+    std_detection_prompt = f"""Please locate the disease {classes} in the given image and output the bounding boxes. Be as precise as possible. The box_2d should be [ymin, xmin, ymax, xmax] normalized to 0-1000."
+    Important: Only return the json object nothing else.
+    """
     with open(path_to_image, 'rb') as f:
         image_bytes = f.read()
 
@@ -27,24 +38,41 @@ def detect_single_image(path_to_image : str):
             std_detection_prompt
         ]
     )
+    print(f"LLM response: {response.text}")
+
+    # because of rate limit
+    time.sleep(30)
     return response.text
 
-
-def get_bbox(path_to_image: str, destination_path: str):
+def get_bbox(path_to_image: str, destination_path: str, classes: list):
     image = cv2.imread(path_to_image)
     height, width = image.shape[:2]
 
-    response = detect_single_image(path_to_image)
-
-    lines = response.strip().split('\n')
-    json_content_lines = lines[1:-1]
-    clean_json_string = "\n".join(json_content_lines)
+    response_text = detect_single_image(path_to_image, classes)
 
     try:
+        lines = response_text.strip().split('\n')
+        json_content_lines = lines[1:-1]
+        clean_json_string = "\n".join(json_content_lines)
         response_json = json.loads(clean_json_string)
+
+        # pattern = r"json\s*\[\s*{.*?}\s*\]"
+        # match = re.search(pattern, response_text)
+
+        # if match:
+        #     json_str = match.group(1)
+        #     print(json_str)
+        #     response_json = json.loads(json_str)
+        # else:
+        #     print("No JSON object found!")
+        #     return
+
     except json.JSONDecodeError as e:
         print(f"Error decoding JSON: {e}")
-        return
+        return {
+        "imageID" : os.path.splitext(os.path.basename(path_to_image))[0],
+        "annotation" : None
+        }
 
     for item in response_json:
         y0, x0, y1, x1 = item["box_2d"]
@@ -56,13 +84,91 @@ def get_bbox(path_to_image: str, destination_path: str):
 
         label = item["label"]
 
-        cv2.rectangle(image, (x_min, y_min), (x_max, y_max), color=(0, 255, 0), thickness=2)
-        cv2.putText(image, label, (x_min, y_min - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+        cv2.rectangle(image, (x_min, y_min), (x_max, y_max), color=(0,0,255), thickness=2)
+        cv2.putText(image, label, (x_min, y_min - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,0,255), 2)
 
     cv2.imwrite(destination_path, image)
 
+    annotation_json = {
+        "imageID" : os.path.splitext(os.path.basename(path_to_image))[0],
+        "annotation" : response_json
+    }
+    return annotation_json
+
+def get_bbox_wrapper(args):
+    path_to_image, destination_path, classes = args
+    try:
+        response = get_bbox(path_to_image, destination_path, classes)
+        return response
+    except Exception as e:
+        print(f"Error: {e}")
+        return {
+        "imageID" : os.path.splitext(os.path.basename(path_to_image))[0],
+        "annotation" : None
+        }
+
+
+def get_bbox_parallel(image_dir : str, destination_dir : str, classes : list):
+    if not Path.is_dir(CODEBASE_DIR / image_dir):
+        raise ValueError("Wrong image dir. Please specify the relative path! :)")
+    past_flag_ = False
+
+    if not Path.is_dir(CODEBASE_DIR / destination_dir):
+        os.makedirs(CODEBASE_DIR / destination_dir, exist_ok=True)
+        image_paths = load_image_paths(dir=image_dir)
+    else:
+        with open(Path(os.path.dirname(CODEBASE_DIR / destination_dir)) / "detection_annotation_results.json", 'r') as file:
+            past_annotation = json.load(file)
+        
+        image_paths = []
+        for ele in past_annotation:
+            if not ele["annotation"]:
+                image_paths.append(CODEBASE_DIR / image_dir / f"{ele['imageID']}.png")
+        
+        past_flag_ = True
+
+
+    tasks = [
+        (path, os.path.join(CODEBASE_DIR / destination_dir, os.path.basename(path)), classes)
+        for path in image_paths
+    ]
+
+    with Pool(processes=4) as pool:
+        results = pool.map(get_bbox_wrapper, tasks)
+
+    if past_flag_:
+        annotation_lookup = {item["imageID"]: item["annotation"] for item in results}
+        for item in past_annotation:
+            if item["annotation"] is None:
+                image_id = item["imageID"]
+                item["annotation"] = annotation_lookup.get(image_id)
+        with open(Path(os.path.dirname(CODEBASE_DIR / image_dir)) / "detection_annotation_results.json", 'w') as file:
+            json.dump(past_annotation, file)
+
+    else:
+        with open(Path(os.path.dirname(CODEBASE_DIR / image_dir)) / "detection_annotation_results.json", 'w') as file:
+            json.dump(results, file)
+
 
 if __name__=="__main__":
-    test_image_path = pathlib.Path("D:/TUM/AI_in_VLM/code/data/test_image.jpg")
-    destination_path = pathlib.Path("D:/TUM/AI_in_VLM/code/data/test_image_output.jpg")
-    get_bbox(test_image_path, destination_path)
+    # test single run
+    # test_image_path = pathlib.Path("D:/TUM/AI_in_VLM/code/code/data/test_image.jpg")
+    # destination_path = pathlib.Path("D:/TUM/AI_in_VLM/code/code/data/test_image_output__.jpg")
+    # get_bbox(test_image_path, destination_path)
+
+    with open(Path(CODEBASE_DIR / "data/chest_xrays/annotations_len_50.json"), 'r') as file:
+        obj = json.load(file)
+    
+    diseases = []
+    for key, value in obj.items():
+        for disease in value["bbox_2d"]:
+            diseases.append(disease[4])
+
+    diseases = list(set(diseases))
+
+    get_bbox_parallel(
+        image_dir="data/chest_xrays/images/",
+        destination_dir="data/chest_xrays/image_detection_results/",
+        classes=diseases
+    )
+
