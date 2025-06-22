@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import supervision as sv
 from supervision.metrics import MeanAveragePrecision
@@ -40,9 +41,9 @@ def compute_map_supervision(pred_boxes, pred_classes, true_boxes, true_classes):
     metric = MeanAveragePrecision()
     result = metric.update(preds, targets).compute()
 
-    print("mAP@50:95:", result.map50_95)
-    print("mAP@50:   ", result.map50)
-    print("mAP@75:   ", result.map75)
+    # print("mAP@50:95:", result.map50_95)
+    # print("mAP@50:   ", result.map50)
+    # print("mAP@75:   ", result.map75)
     
     return result
 
@@ -69,6 +70,53 @@ def draw_boxes(pred_boxes, true_boxes, image_size=(1024, 1024)):
     ax.axis('off')
     plt.tight_layout()
     plt.show()
+
+
+def draw_boxes_on_image(image_path, pred_boxes, true_boxes,
+                        pred_labels=None, true_labels=None,
+                        save_path=None):
+    image = cv2.imread(image_path)
+    if image is None:
+        raise FileNotFoundError(f"Image not found at {image_path}")
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    fig, ax = plt.subplots(1, figsize=(12, 12))
+    ax.imshow(image)
+
+    # Draw predicted boxes in red
+    for i, box in enumerate(pred_boxes):
+        x1, y1, x2, y2 = box
+        label = pred_labels[i] if pred_labels and i < len(pred_labels) else ""
+        rect = patches.Rectangle(
+            (x1, y1), x2 - x1, y2 - y1,
+            linewidth=2, edgecolor='red', facecolor='none'
+        )
+        ax.add_patch(rect)
+        if label:
+            ax.text(x1, y1 - 5, label, color='red', fontsize=12,
+                    verticalalignment='bottom')
+
+    # Draw ground truth boxes in green
+    for i, box in enumerate(true_boxes):
+        x1, y1, x2, y2 = box
+        label = true_labels[i] if true_labels and i < len(true_labels) else ""
+        rect = patches.Rectangle(
+            (x1, y1), x2 - x1, y2 - y1,
+            linewidth=2, edgecolor='green', facecolor='none'
+        )
+        ax.add_patch(rect)
+        if label:
+            ax.text(x1, y1 - 5, label, color='green', fontsize=12,
+                    verticalalignment='bottom')
+
+    ax.axis('off')
+    plt.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, bbox_inches='tight', pad_inches=0)
+        plt.close(fig)
+    else:
+        plt.show()
 
 if __name__ == "__main__":
     pred_boxes = [
