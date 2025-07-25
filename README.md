@@ -32,23 +32,23 @@ python src/detect.py
 <p align="center">
     <img src="./code/static/abnormality_grounding.jpg" alt="Abnormality Grounding">
     <br>
-    <span style="font-size: 13px;"><em>Figure 1: Abnormality detection results from different models on chest X-rays and brain MRI images. The table displays average performance scores across various metrics.</em></span>
+    <span style="font-size: 8px;"><em>Figure 1: Abnormality detection results from different models on chest X-rays and brain MRI images. The table displays average performance scores across various metrics.</em></span>
 </p>
 
 <p align="center">
     <img src="./code/static/xray_classification.jpg" width="50%" alt="Chest X-rays Classification">
     <br>
-    <span style="font-size: 13px;"><em>Figure 2: Confusion matrices of Gemini 2.5 Flash and Maira-2 for disease classification on X-ray images.</em></span>
+    <span style="font-size: 8px;"><em>Figure 2: Confusion matrices of Gemini 2.5 Flash and Maira-2 for disease classification on X-ray images.</em></span>
 </p>
 
 <p align="center">
     <img src="./code/static/brain_mri_description_analysis.jpg" width="50%" alt="Brain MRI Description">
     <br>
-    <span style="font-size: 13px;"><em>Figure 3: LLM scores and semantic similarity comparison between model-generated descriptions and ground truth annotations.</em></span>
+    <span style="font-size: 8px;"><em>Figure 3: LLM scores and semantic similarity comparison between model-generated descriptions and ground truth annotations.</em></span>
 </p>
 
 <p align="center">
     <img src="./code/static/brain_mri_disease_diagonis.jpg" width="50%" alt="Brain MRI Diagnosis">
     <br>
-    <span style="font-size: 13px;"><em>Figure 4: Model accuracy comparison for disease diagnosis based on clinical history and image findings.</em></span>
+    <span style="font-size: 8px;"><em>Figure 4: Model accuracy comparison for disease diagnosis based on clinical history and image findings.</em></span>
 </p>
